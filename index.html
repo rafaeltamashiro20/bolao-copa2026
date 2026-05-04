@@ -710,18 +710,36 @@ function selectExisting(name){
   showPinStep(name);
 }
 
-function showPinStep(name){
+async function showPinStep(name){
   document.getElementById('step-nome').style.display='none';
   document.getElementById('step-pin').style.display='block';
+  document.getElementById('pin-title').textContent='Verificando...';
+  document.getElementById('pin-hint').textContent='Aguarde um momento';
+  document.getElementById('pin-btn').disabled=true;
+  document.getElementById('pin-err').style.display='none';
+  ['pin1','pin2','pin3','pin4'].forEach(function(id){
+    const el=document.getElementById(id);
+    if(el){el.value='';el.classList.remove('filled');el.disabled=true;}
+  });
+  // Garante que os dados do Sheets estão carregados antes de verificar o PIN
+  try{
+    const cloud = await gsGet();
+    if(cloud.db) DB = cloud.db;
+    if(cloud.real) Object.assign(REAL, cloud.real);
+    cacheLocal();
+  }catch(e){
+    // offline: usa cache local
+    loadCache();
+  }
   const pins=(DB._pins)||{};
   const isNew=!pins[name];
   document.getElementById('pin-title').textContent=isNew?'Escolha seu PIN de 4 dígitos':'Digite seu PIN';
   document.getElementById('pin-hint').textContent=isNew?'Você usará esse PIN sempre que entrar':'Bem-vindo de volta, '+name+'!';
-  document.getElementById('pin-btn').textContent=isNew?'Criar conta \u2192':'Entrar \u2192';
-  document.getElementById('pin-err').style.display='none';
+  document.getElementById('pin-btn').textContent=isNew?'Criar conta →':'Entrar →';
+  document.getElementById('pin-btn').disabled=false;
   ['pin1','pin2','pin3','pin4'].forEach(function(id){
     const el=document.getElementById(id);
-    if(el){el.value='';el.classList.remove('filled');}
+    if(el){el.value='';el.classList.remove('filled');el.disabled=false;}
   });
   setTimeout(function(){const p=document.getElementById('pin1');if(p)p.focus();},50);
 }
@@ -758,21 +776,29 @@ function getPin(){
   }).join('');
 }
 
-function confirmPin(){
+async function confirmPin(){
   const pin=getPin();
   if(pin.length<4){
     document.getElementById('pin-err').textContent='Digite os 4 dígitos do PIN.';
     document.getElementById('pin-err').style.display='block';return;
   }
   const name=_pendingName;
+  // Busca sempre do Sheets antes de validar — evita usar cache desatualizado
+  try{
+    const cloud = await gsGet();
+    if(cloud.db) DB = cloud.db;
+  }catch(e){}
   if(!DB._pins)DB._pins={};
   const storedPin=DB._pins[name];
   if(!storedPin){
+    // Usuário novo — registra PIN
     DB._pins[name]=pin;
     doLogin(name);
   } else if(storedPin===pin){
+    // PIN correto
     doLogin(name);
   } else {
+    // PIN errado
     document.getElementById('pin-err').textContent='PIN incorreto. Tente novamente.';
     document.getElementById('pin-err').style.display='block';
     ['pin1','pin2','pin3','pin4'].forEach(function(id){
